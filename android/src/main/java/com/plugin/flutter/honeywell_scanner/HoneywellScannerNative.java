@@ -13,18 +13,18 @@ import java.util.Map;
 /**
  * Created by krrigan on 10/13/18.
  */
-
 public class HoneywellScannerNative extends HoneywellScanner implements AidcManager.CreatedCallback,
         BarcodeReader.BarcodeListener {
 
+    private static final String PROPERTY_PRESERVE_EXISTING_SETTINGS =
+            "__honeywell_scanner_preserve_existing_settings";
+
     private boolean initialized, initializing, pendingResume, supported;
+    private boolean preserveExistingSettings;
+
     private transient AidcManager scannerManager;
     private transient BarcodeReader scanner;
     private transient Map<String, Object> properties;
-
-    private static final String PROPERTY_PRESERVE_EXISTING_SETTINGS =
-            "__honeywell_scanner_preserve_existing_settings";
-    private boolean preserveExistingSettings;
 
     public HoneywellScannerNative(Context context)
     {
@@ -33,10 +33,10 @@ public class HoneywellScannerNative extends HoneywellScanner implements AidcMana
         initialized = false;
         initializing = false;
         supported = false;
-        preserveExistingSettings = false;
+        preserveExistingSettings = false; // backward-compatible default behavior
         init();
     }
-    
+
     @Override
     public boolean isSupported() { return supported; }
 
@@ -59,20 +59,10 @@ public class HoneywellScannerNative extends HoneywellScanner implements AidcMana
             // register bar code event listener
             scanner.addBarcodeListener(this);
 
-            // Apply plugin defaults only when we do NOT preserve Honeywell Settings profile.
-            if (!preserveExistingSettings) {
-                try {
-                    scanner.setProperty(BarcodeReader.PROPERTY_TRIGGER_CONTROL_MODE,
-                            BarcodeReader.TRIGGER_CONTROL_MODE_AUTO_CONTROL);
-                    scanner.setProperty(BarcodeReader.PROPERTY_DATA_PROCESSOR_LAUNCH_BROWSER, false);
-                } catch (UnsupportedPropertyException e) {
-                    onError(e);
-                }
-            }
-
-            // register trigger state change listener
-            // When using Automatic Trigger control do not need to implement the onTriggerEvent
-            // function scanner.addTriggerListener(this);
+            // IMPORTANT:
+            // Do not force trigger/browser defaults here.
+            // onCreated can happen before Flutter sends preserve flag.
+            // Defaults are applied in startScanner() only when preserveExistingSettings == false.
 
             if (properties != null && !properties.isEmpty()) {
                 scanner.setProperties(properties);
@@ -96,8 +86,8 @@ public class HoneywellScannerNative extends HoneywellScanner implements AidcMana
     @Override
     public void onFailureEvent(BarcodeFailureEvent barcodeFailureEvent)
     {
-        //Do nothing with unrecognized code due to an incomplete scanning
-//        if(barcodeFailureEvent != null) onError(new Exception(barcodeFailureEvent.toString()));
+        // Do nothing with unrecognized code due to an incomplete scanning
+        // if(barcodeFailureEvent != null) onError(new Exception(barcodeFailureEvent.toString()));
     }
 
     private void initProperties(){
@@ -119,10 +109,21 @@ public class HoneywellScannerNative extends HoneywellScanner implements AidcMana
         properties.put(BarcodeReader.PROPERTY_UPC_E_ENABLED, true);
     }
 
+    private void applyPluginDefaultsIfNeeded() {
+        if (preserveExistingSettings || scanner == null) return;
+        try {
+            scanner.setProperty(BarcodeReader.PROPERTY_TRIGGER_CONTROL_MODE,
+                    BarcodeReader.TRIGGER_CONTROL_MODE_AUTO_CONTROL);
+            scanner.setProperty(BarcodeReader.PROPERTY_DATA_PROCESSOR_LAUNCH_BROWSER, false);
+        } catch (UnsupportedPropertyException e) {
+            onError(e);
+        }
+    }
+
     @Override
     public void setProperties(Map<String, Object> mapProperties)
     {
-        if (mapProperties == null) return;
+        if(mapProperties == null) return;
 
         Map<String, Object> incoming = new HashMap<>(mapProperties);
 
@@ -135,7 +136,7 @@ public class HoneywellScannerNative extends HoneywellScanner implements AidcMana
             // Keep Honeywell Settings profile; apply only explicit overrides from Flutter.
             properties = new HashMap<>(incoming);
         } else {
-            // Old behavior (backward compatible): force plugin defaults + overrides.
+            // Legacy behavior: plugin defaults + explicit overrides.
             initProperties();
             properties.putAll(incoming);
         }
@@ -199,6 +200,14 @@ public class HoneywellScannerNative extends HoneywellScanner implements AidcMana
     {
         if (scanner != null){
             try {
+                // Apply plugin defaults only in legacy mode.
+                applyPluginDefaultsIfNeeded();
+
+                // Apply requested/derived properties for this session.
+                if (properties != null && !properties.isEmpty()) {
+                    scanner.setProperties(properties);
+                }
+
                 scanner.claim();
             } catch (Exception e) {
                 onError(e);
