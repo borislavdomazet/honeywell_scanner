@@ -1,13 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:honeywell_scanner/scanned_data.dart';
 import 'package:honeywell_scanner/scanner_callback.dart';
 
-export 'package:honeywell_scanner/scanner_callback.dart';
 export 'package:honeywell_scanner/code_format.dart';
 export 'package:honeywell_scanner/scanned_data.dart';
+export 'package:honeywell_scanner/scanner_callback.dart';
 
 class HoneywellScanner {
   static const _METHOD_CHANNEL = "honeywellscanner";
@@ -23,6 +24,11 @@ class HoneywellScanner {
   static const _STOP_SCANNING = "stopScanning";
   static const _ON_DECODED = "onDecoded";
   static const _ON_ERROR = "onError";
+
+  /// Plugin control flag (not a native Honeywell property).
+  /// When true, plugin will avoid forcing its default scanner settings.
+  static const String preserveHoneywellSettingsProperty =
+      '__honeywell_scanner_preserve_existing_settings';
 
   static final List<HoneywellScanner> _instances = [];
 
